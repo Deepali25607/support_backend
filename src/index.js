@@ -27,6 +27,20 @@ app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 app.use(attachUser);
 
+app.get('/', (_req, res) => {
+  res.json({
+    service: 'nexus-backend',
+    status: 'ok',
+    message: 'NEXUS support backend is live. API routes are under /api.',
+    docs: {
+      health: '/api/health',
+      auth: '/api/auth',
+      products: '/api/products',
+    },
+    time: new Date().toISOString(),
+  });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', service: 'nexus-backend', time: new Date().toISOString() });
 });
