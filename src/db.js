@@ -2,10 +2,22 @@ import { JSONFilePreset } from 'lowdb/node';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
 import bcrypt from 'bcryptjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbFile = path.join(__dirname, '..', 'data.json');
+
+// Where the JSON database lives.
+//
+// IMPORTANT: on Render (and most PaaS) the app's own filesystem is EPHEMERAL —
+// it is wiped on every deploy and on restarts. If data.json lives inside the
+// app directory it is destroyed each deploy, the seed below re-runs, and all
+// real data is lost. In production, mount a Render persistent disk and set
+// DATA_DIR to its mount path (e.g. /var/data) so the database survives.
+// Locally, DATA_DIR is unset and it falls back to the repo folder as before.
+const dataDir = process.env.DATA_DIR || path.join(__dirname, '..');
+fs.mkdirSync(dataDir, { recursive: true });
+const dbFile = path.join(dataDir, 'data.json');
 
 const defaultData = {
   users: [],
