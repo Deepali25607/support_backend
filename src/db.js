@@ -462,6 +462,15 @@ if (db.data.siteContent.length === 0) {
 // Backfill: ensure new siteContent keys exist on existing DBs (e.g. support contact).
 {
   const required = [
+    {
+      key: 'stats', label: 'Homepage Stats', kind: 'collection',
+      value: [
+        { value: 120, suffix: '+', label: 'Enterprise Clients' },
+        { value: 8, suffix: '', label: 'Flagship Products' },
+        { value: 99.9, suffix: '%', label: 'Uptime Guarantee' },
+        { value: 24, suffix: '/7', label: 'Support Coverage' },
+      ],
+    },
     { key: 'support.email', label: 'Support Email', kind: 'text', value: 'hello@nexuslab.io' },
     { key: 'support.phone', label: 'Support Phone', kind: 'text', value: '+91 90000 00000' },
     { key: 'support.locations', label: 'Office Locations', kind: 'list', value: ['Bengaluru', 'Singapore', 'Dubai'] },
