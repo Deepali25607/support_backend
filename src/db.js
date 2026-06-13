@@ -1,4 +1,6 @@
 import { JSONFilePreset } from 'lowdb/node';
+import { Low } from 'lowdb';
+import { MongoClient } from 'mongodb';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
@@ -6,18 +8,6 @@ import fs from 'node:fs';
 import bcrypt from 'bcryptjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-// Where the JSON database lives.
-//
-// IMPORTANT: on Render (and most PaaS) the app's own filesystem is EPHEMERAL —
-// it is wiped on every deploy and on restarts. If data.json lives inside the
-// app directory it is destroyed each deploy, the seed below re-runs, and all
-// real data is lost. In production, mount a Render persistent disk and set
-// DATA_DIR to its mount path (e.g. /var/data) so the database survives.
-// Locally, DATA_DIR is unset and it falls back to the repo folder as before.
-const dataDir = process.env.DATA_DIR || path.join(__dirname, '..');
-fs.mkdirSync(dataDir, { recursive: true });
-const dbFile = path.join(dataDir, 'data.json');
 
 const defaultData = {
   users: [],
@@ -37,7 +27,74 @@ const defaultData = {
   products: [],
 };
 
-export const db = await JSONFilePreset(dbFile, defaultData);
+// ---------------------------------------------------------------------------
+// Storage
+//
+// On Render's free tier the filesystem is EPHEMERAL — it is wiped on every
+// deploy and restart, so a local data.json there is destroyed and the seed
+// below re-runs, wiping all real data. To persist for free we store the
+// ENTIRE database as a single document in MongoDB Atlas (free tier).
+//
+// This is a drop-in lowdb adapter: every other part of the app keeps using
+// `db.data.*` and `db.write()` exactly as before — only the storage backend
+// changes. If MONGODB_URI is not set (e.g. local dev) we fall back to the
+// original JSON-file behaviour, so nothing changes locally.
+// ---------------------------------------------------------------------------
+class MongoJSONAdapter {
+  constructor(uri, dbName, collectionName, docId) {
+    this.client = new MongoClient(uri);
+    this.dbName = dbName;
+    this.collectionName = collectionName;
+    this.docId = docId;
+    this.connecting = null;
+  }
+
+  async collection() {
+    if (!this.connecting) this.connecting = this.client.connect();
+    await this.connecting;
+    return this.client.db(this.dbName).collection(this.collectionName);
+  }
+
+  async read() {
+    const col = await this.collection();
+    const doc = await col.findOne({ _id: this.docId });
+    return doc ? doc.data : null;
+  }
+
+  async write(data) {
+    const col = await this.collection();
+    await col.updateOne({ _id: this.docId }, { $set: { data } }, { upsert: true });
+  }
+}
+
+async function createDb() {
+  const uri = process.env.MONGODB_URI;
+  if (uri) {
+    const adapter = new MongoJSONAdapter(
+      uri,
+      process.env.MONGODB_DB || 'support',
+      'database',
+      'singleton',
+    );
+    const instance = new Low(adapter, defaultData);
+    await instance.read();
+    // First ever boot against an empty Atlas database: persist the defaults
+    // so the document exists. The seed blocks below then fill it in once.
+    if (!instance.data) {
+      instance.data = structuredClone(defaultData);
+      await instance.write();
+    }
+    return instance;
+  }
+
+  // Local / non-Mongo fallback — JSON file on disk (original behaviour).
+  // DATA_DIR can point at a persistent disk if you ever move off the free tier.
+  const dataDir = process.env.DATA_DIR || path.join(__dirname, '..');
+  fs.mkdirSync(dataDir, { recursive: true });
+  return JSONFilePreset(path.join(dataDir, 'data.json'), defaultData);
+}
+
+export const db = await createDb();
 
 // Backfill any missing collections (so older DBs gain new tables)
 for (const key of Object.keys(defaultData)) {
