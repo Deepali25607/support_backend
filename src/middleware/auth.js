@@ -13,10 +13,13 @@ export function signToken(user) {
 }
 
 export function setAuthCookie(res, token) {
+  // In production (HTTPS on AWS) the cookie must be `secure`, otherwise the
+  // browser refuses to send it. Locally (http://localhost) it stays off.
+  const isProd = process.env.NODE_ENV === 'production';
   res.cookie(COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: false,
+    secure: isProd,
     maxAge: 7 * 86400 * 1000,
   });
 }
